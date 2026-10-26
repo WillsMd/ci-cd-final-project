@@ -1,3 +1,4 @@
+---
 apiVersion: tekton.dev/v1beta1
 kind: PipelineRun
 metadata:
@@ -9,6 +10,9 @@ spec:
   params:
     - name: repo-url
       value: https://github.com/WillsMd/ci-cd-final-project.git
+
+    - name: repo-revision
+      value: main
 
     - name: app-name
       value: oc-lab-app

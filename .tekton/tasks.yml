@@ -1,19 +1,16 @@
 ---
----
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: cleanup
 spec:
-  description: This task will clean up a workspace by deleting all the files.
+  description: Clean the shared workspace before cloning the repository.
   workspaces:
     - name: source
+
   steps:
     - name: remove
       image: alpine:3
-      env:
-        - name: WORKSPACE_SOURCE_PATH
-          value: $(workspaces.source.path)
       workingDir: $(workspaces.source.path)
       securityContext:
         runAsNonRoot: false
@@ -21,18 +18,13 @@ spec:
       script: |
         #!/usr/bin/env sh
         set -eu
-        echo "Removing all files from ${WORKSPACE_SOURCE_PATH} ..."
-        # Delete any existing contents of the directory if it exists.
-        #
-        # We don't just "rm -rf ${WORKSPACE_SOURCE_PATH}" because ${WORKSPACE_SOURCE_PATH} might be "/"
-        # or the root of a mounted volume.
-        if [ -d "${WORKSPACE_SOURCE_PATH}" ] ; then
-          # Delete non-hidden files and directories
-          rm -rf "${WORKSPACE_SOURCE_PATH:?}"/*
-          # Delete files and directories starting with . but excluding ..
-          rm -rf "${WORKSPACE_SOURCE_PATH}"/.[!.]*
-          # Delete files and directories starting with .. plus any other character
-          rm -rf "${WORKSPACE_SOURCE_PATH}"/..?*
+
+        echo "Removing all files from $(workspaces.source.path) ..."
+
+        if [ -d "$(workspaces.source.path)" ]; then
+          rm -rf "$(workspaces.source.path)"/*
+          rm -rf "$(workspaces.source.path)"/.[!.]*
+          rm -rf "$(workspaces.source.path)"/..?*
         fi
 
 ---
@@ -41,24 +33,29 @@ kind: Task
 metadata:
   name: eslint
 spec:
+  description: Run Python linting with flake8.
   workspaces:
     - name: source
+
   params:
     - name: args
-      description: Arguments to pass to ESLint
+      description: Arguments passed to flake8.
       type: string
-      default: "src/ tests/ --ext *.js"
+      default: "service tests --count --select=E9,F63,F7,F82 --show-source --statistics"
+
   steps:
     - name: lint
-      image: node:20-alpine
+      image: python:3.11
       workingDir: $(workspaces.source.path)
       script: |
-             #!/bin/sh
-              set -e
-              echo "Installing dependencies..."
-              npm ci
-              echo "Running ESLint..."
-              npm run lint $(params.args)
+        #!/usr/bin/env sh
+        set -eu
+
+        echo "Installing Python dependencies..."
+        pip install --disable-pip-version-check -r requirements.txt
+
+        echo "Running flake8..."
+        python -m flake8 $(params.args)
 
 ---
 apiVersion: tekton.dev/v1beta1
@@ -66,23 +63,47 @@ kind: Task
 metadata:
   name: jest-test
 spec:
+  description: Run Python unit tests with Nose.
   workspaces:
     - name: source
+
   params:
     - name: args
-      description: Arguments to pass to jest
+      description: Arguments passed to Nose.
       type: string
       default: "-v"
+
   steps:
-    - name: jest
-      image: node:20-alpine
+    - name: test
+      image: python:3.11
       workingDir: $(workspaces.source.path)
       script: |
-          #!/bin/sh
-          set -e
-          echo "Installing dependencies..."
-          npm ci
-          echo "Running Jest tests..."
-          npm test $(params.args)
+        #!/usr/bin/env sh
+        set -eu
 
+        echo "Installing Python dependencies..."
+        pip install --disable-pip-version-check -r requirements.txt
 
+        echo "Running unit tests..."
+
+        python - $(params.args) <<'PY'
+        import collections
+        import collections.abc
+        import sys
+
+        # Compatibility adjustments for Nose 1.3.7 on Python 3.11.
+        compatibility_names = [
+            "Callable",
+            "Mapping",
+            "MutableMapping",
+            "Sequence",
+        ]
+
+        for name in compatibility_names:
+            if not hasattr(collections, name):
+                setattr(collections, name, getattr(collections.abc, name))
+
+        import nose
+
+        nose.run_exit(argv=["nosetests"] + sys.argv[1:])
+        PY

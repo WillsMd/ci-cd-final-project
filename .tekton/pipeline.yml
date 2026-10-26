@@ -1,18 +1,28 @@
+---
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
   name: ci-cd-pipeline
+
 spec:
   params:
     - name: repo-url
+      description: Git repository URL
       type: string
       default: https://github.com/WillsMd/ci-cd-final-project.git
 
+    - name: repo-revision
+      description: Git branch or revision
+      type: string
+      default: main
+
     - name: app-name
+      description: OpenShift application name
       type: string
       default: oc-lab-app
 
     - name: build-image
+      description: Container image built by Buildah
       type: string
       default: image-registry.openshift-image-registry.svc:5000/sn-labs-williammdemu/oc-lab-app:latest
 
@@ -37,10 +47,13 @@ spec:
       params:
         - name: url
           value: $(params.repo-url)
+
         - name: revision
-          value: main
+          value: $(params.repo-revision)
+
         - name: deleteExisting
           value: "true"
+
       workspaces:
         - name: output
           workspace: output
@@ -51,6 +64,9 @@ spec:
       taskRef:
         name: eslint
         kind: Task
+      params:
+        - name: args
+          value: "service tests --count --select=E9,F63,F7,F82 --show-source --statistics"
       workspaces:
         - name: source
           workspace: output
@@ -61,6 +77,9 @@ spec:
       taskRef:
         name: jest-test
         kind: Task
+      params:
+        - name: args
+          value: "-v"
       workspaces:
         - name: source
           workspace: output
@@ -74,10 +93,13 @@ spec:
       params:
         - name: IMAGE
           value: $(params.build-image)
+
         - name: DOCKERFILE
           value: ./Dockerfile
+
         - name: CONTEXT
           value: .
+
       workspaces:
         - name: source
           workspace: output
