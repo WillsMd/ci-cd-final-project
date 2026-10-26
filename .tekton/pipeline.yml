@@ -1,0 +1,83 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: ci-cd-pipeline
+spec:
+  params:
+    - name: repo-url
+      type: string
+      default: https://github.com/WillsMd/ci-cd-final-project.git
+
+    - name: app-name
+      type: string
+      default: oc-lab-app
+
+    - name: build-image
+      type: string
+      default: image-registry.openshift-image-registry.svc:5000/sn-labs-williammdemu/oc-lab-app:latest
+
+  workspaces:
+    - name: output
+
+  tasks:
+    - name: cleanup
+      taskRef:
+        name: cleanup
+        kind: Task
+      workspaces:
+        - name: source
+          workspace: output
+
+    - name: git-clone
+      runAfter:
+        - cleanup
+      taskRef:
+        name: git-clone
+        kind: ClusterTask
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: main
+        - name: deleteExisting
+          value: "true"
+      workspaces:
+        - name: output
+          workspace: output
+
+    - name: eslint-linting
+      runAfter:
+        - git-clone
+      taskRef:
+        name: eslint
+        kind: Task
+      workspaces:
+        - name: source
+          workspace: output
+
+    - name: jest-tests
+      runAfter:
+        - eslint-linting
+      taskRef:
+        name: jest-test
+        kind: Task
+      workspaces:
+        - name: source
+          workspace: output
+
+    - name: buildah-task
+      runAfter:
+        - jest-tests
+      taskRef:
+        name: buildah
+        kind: ClusterTask
+      params:
+        - name: IMAGE
+          value: $(params.build-image)
+        - name: DOCKERFILE
+          value: ./Dockerfile
+        - name: CONTEXT
+          value: .
+      workspaces:
+        - name: source
+          workspace: output
