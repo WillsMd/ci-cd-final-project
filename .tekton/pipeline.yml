@@ -47,13 +47,10 @@ spec:
       params:
         - name: url
           value: $(params.repo-url)
-
         - name: revision
           value: $(params.repo-revision)
-
         - name: deleteExisting
           value: "true"
-
       workspaces:
         - name: output
           workspace: output
@@ -93,13 +90,21 @@ spec:
       params:
         - name: IMAGE
           value: $(params.build-image)
-
         - name: DOCKERFILE
           value: ./Dockerfile
-
         - name: CONTEXT
           value: .
-
       workspaces:
         - name: source
           workspace: output
+
+    - name: deploy-application
+      runAfter:
+        - buildah-task
+      taskRef:
+        name: openshift-client
+        kind: ClusterTask
+      params:
+        - name: SCRIPT
+          value: |
+            oc create deployment $(params.app-name) --image=$(params.build-image) --dry-run=client -o yaml | oc apply -f -
